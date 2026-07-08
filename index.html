@@ -923,7 +923,7 @@
 
   function closeAdmin(){adminOverlay.hidden=true;}
   document.getElementById('closeAdmin').addEventListener('click',closeAdmin);
-  adminOverlay.addEventListener('click',(e)=>{if(e.target===adminOverlay)closeAdmin();});
+  adminOverlay.addEventListener('click',(e)=>{ if(e.target===adminOverlay && confirm('確定要離開後台管理嗎？')) closeAdmin(); });
 
   function isHrAll(u){ return u.role==='hr'; }
 
