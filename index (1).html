@@ -672,21 +672,6 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="avatarCropOverlay" hidden>
-  <div class="modal-box" style="width:340px; text-align:center;">
-    <div class="modal-head"><span>✂️ 調整頭貼</span><button class="modal-close" id="closeAvatarCrop">×</button></div>
-    <div style="position:relative; width:220px; height:220px; margin:16px auto; overflow:hidden; border-radius:50%; border:2px solid var(--gold-500); background:#000; cursor:move;" id="avatarCropCircle">
-      <img id="avatarCropImg" style="position:absolute; transform-origin:center; user-select:none;" draggable="false">
-    </div>
-    <div style="margin:12px 0 6px; font-size:12px; color:var(--text-tertiary);">縮放</div>
-    <input type="range" id="avatarZoomSlider" min="50" max="200" value="100" style="width:80%; accent-color:var(--gold-500);">
-    <div style="margin:6px 0 12px; font-size:12px; color:var(--text-tertiary);">拖曳圖片調整位置</div>
-    <div style="display:flex; gap:10px; justify-content:flex-end; padding-top:12px; border-top:1px solid var(--border-subtle);">
-      <button class="btn-ghost" id="cancelAvatarCrop">取消</button>
-      <button class="btn-gold" id="confirmAvatarCrop">儲存頭貼</button>
-    </div>
-  </div>
-</div>
 <div class="modal-overlay" id="adminOverlay" hidden>
   <div class="modal admin-modal">
     <div class="modal-head">
@@ -806,7 +791,8 @@
             file:data.file||null, likes:data.likes||0,
             likedByMe:data.likedBy&&currentUser?data.likedBy.includes(currentUser.email):false,
             commentsOpen:openCommentSet.has(d.id),
-            comments:data.comments||[]
+            comments:data.comments||[],
+            ts: data.timestamp?.seconds || d.createTime?.seconds || 0
           };
         });
         renderFeed();
@@ -829,109 +815,48 @@
   // ---------- Avatar ----------
   const changeAvatarBtn = document.getElementById('changeAvatarBtn');
   const avatarFileInput = document.getElementById('avatarFileInput');
-  const avatarCropOverlay = document.getElementById('avatarCropOverlay');
-  const avatarCropImg = document.getElementById('avatarCropImg');
-  const avatarZoomSlider = document.getElementById('avatarZoomSlider');
-  const avatarCropCircle = document.getElementById('avatarCropCircle');
-
-  let cropOffsetX = 0, cropOffsetY = 0, cropZoom = 1;
-  let isDragging = false, dragStartX = 0, dragStartY = 0, dragStartOX = 0, dragStartOY = 0;
-
-  function updateCropTransform(){
-    avatarCropImg.style.transform = `translate(${cropOffsetX}px, ${cropOffsetY}px) scale(${cropZoom})`;
-  }
 
   changeAvatarBtn.addEventListener('click',()=>{ if(!currentUser) return; avatarFileInput.click(); });
 
-  avatarFileInput.addEventListener('change',()=>{
-    const file = avatarFileInput.files&&avatarFileInput.files[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev)=>{
-      avatarCropImg.src = ev.target.result;
-      avatarCropImg.onload = ()=>{
-        const scale = Math.max(220/avatarCropImg.naturalWidth, 220/avatarCropImg.naturalHeight);
-        cropZoom = scale;
-        cropOffsetX = 0; cropOffsetY = 0;
-        // slider：以初始縮放為100，範圍50-200%
-        avatarZoomSlider.min = Math.round(scale * 50);
-        avatarZoomSlider.max = Math.round(scale * 300);
-        avatarZoomSlider.value = Math.round(scale * 100);
-        avatarCropImg.style.width = avatarCropImg.naturalWidth+'px';
-        avatarCropImg.style.height = avatarCropImg.naturalHeight+'px';
-        avatarCropImg.style.left = '50%';
-        avatarCropImg.style.top = '50%';
-        avatarCropImg.style.marginLeft = (-avatarCropImg.naturalWidth/2)+'px';
-        avatarCropImg.style.marginTop = (-avatarCropImg.naturalHeight/2)+'px';
-        updateCropTransform();
-        avatarCropOverlay.hidden = false;
-      };
-    };
-    reader.readAsDataURL(file);
-    avatarFileInput.value='';
-  });
-
-  avatarZoomSlider.addEventListener('input',()=>{
-    cropZoom = avatarZoomSlider.value / 100;
-    updateCropTransform();
-  });
-
-  // 拖曳
-  avatarCropCircle.addEventListener('mousedown',(e)=>{
-    isDragging=true; dragStartX=e.clientX; dragStartY=e.clientY;
-    dragStartOX=cropOffsetX; dragStartOY=cropOffsetY; e.preventDefault();
-  });
-  document.addEventListener('mousemove',(e)=>{
-    if(!isDragging) return;
-    cropOffsetX = dragStartOX+(e.clientX-dragStartX);
-    cropOffsetY = dragStartOY+(e.clientY-dragStartY);
-    updateCropTransform();
-  });
-  document.addEventListener('mouseup',()=>{ isDragging=false; });
-  // 觸控支援
-  avatarCropCircle.addEventListener('touchstart',(e)=>{
-    isDragging=true; dragStartX=e.touches[0].clientX; dragStartY=e.touches[0].clientY;
-    dragStartOX=cropOffsetX; dragStartOY=cropOffsetY; e.preventDefault();
-  },{passive:false});
-  document.addEventListener('touchmove',(e)=>{
-    if(!isDragging) return;
-    cropOffsetX=dragStartOX+(e.touches[0].clientX-dragStartX);
-    cropOffsetY=dragStartOY+(e.touches[0].clientY-dragStartY);
-    updateCropTransform();
-  });
-  document.addEventListener('touchend',()=>{ isDragging=false; });
-
-  function closeAvatarCrop(){ avatarCropOverlay.hidden=true; }
-  document.getElementById('closeAvatarCrop').addEventListener('click', closeAvatarCrop);
-  document.getElementById('cancelAvatarCrop').addEventListener('click', closeAvatarCrop);
-
-  document.getElementById('confirmAvatarCrop').addEventListener('click', async()=>{
-    const size = 200;
-    const canvas = document.createElement('canvas');
-    canvas.width = size; canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    // 圓形遮罩
-    ctx.beginPath(); ctx.arc(size/2,size/2,size/2,0,Math.PI*2); ctx.clip();
-    const img = avatarCropImg;
-    // 修正座標換算：circle是220px，canvas是200px
-    const ratio = size / 220;
-    const scaledZoom = cropZoom * ratio;
-    const dx = size/2 + cropOffsetX*ratio - (img.naturalWidth * scaledZoom)/2;
-    const dy = size/2 + cropOffsetY*ratio - (img.naturalHeight * scaledZoom)/2;
-    ctx.drawImage(img, dx, dy, img.naturalWidth*scaledZoom, img.naturalHeight*scaledZoom);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-    if(dataUrl.length < 100){ alert('圖片轉換失敗，請重試'); return; }
-    const confirmBtn = document.getElementById('confirmAvatarCrop');
-    confirmBtn.textContent = '儲存中…'; confirmBtn.disabled = true;
+  avatarFileInput.addEventListener('change', async()=>{
+    const file = avatarFileInput.files && avatarFileInput.files[0];
+    if(!file || !currentUser) return;
+    avatarFileInput.value = '';
+    changeAvatarBtn.textContent = '上傳中…';
+    changeAvatarBtn.disabled = true;
     try{
+      // 讀取圖片並壓縮為200x200
+      const dataUrl = await new Promise((resolve, reject)=>{
+        const reader = new FileReader();
+        reader.onload = (ev)=>{
+          const img = new Image();
+          img.onload = ()=>{
+            const size = 200;
+            const canvas = document.createElement('canvas');
+            canvas.width = size; canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            // 置中裁切為正方形
+            const minDim = Math.min(img.naturalWidth, img.naturalHeight);
+            const sx = (img.naturalWidth - minDim) / 2;
+            const sy = (img.naturalHeight - minDim) / 2;
+            ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
+          };
+          img.onerror = reject;
+          img.src = ev.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
       await db.collection('users').doc(currentUser.id).update({ customAvatar: dataUrl });
       currentUser.customAvatar = dataUrl;
-      closeAvatarCrop();
       renderFeed();
     }catch(err){
-      console.error('avatar save error:', err);
-      alert('儲存失敗：'+err.message);
+      console.error('avatar error:', err);
+      alert('換頭貼失敗：' + err.message);
     }finally{
-      confirmBtn.textContent = '儲存頭貼'; confirmBtn.disabled = false;
+      changeAvatarBtn.textContent = '📷 換頭像';
+      changeAvatarBtn.disabled = false;
     }
   });
 
@@ -1168,7 +1093,10 @@
 
   // ---------- Feed ----------
   function renderFeed(){
-    const sorted=[...currentPosts()].sort((a,b)=>(b.pinned-a.pinned));
+    const sorted=[...currentPosts()].sort((a,b)=>{
+      if(b.pinned!==a.pinned) return (b.pinned?1:0)-(a.pinned?1:0);
+      return (b.ts||0)-(a.ts||0);
+    });
     if(sorted.length===0){
       const hint=role==='instructor'
         ?'目前這個頻道還沒有貼文，點右下角 <b>+</b> 發布第一篇公告吧 ✦'
