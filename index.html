@@ -397,7 +397,7 @@
     z-index:100; padding:18px;
   }
   .modal-overlay[hidden]{display:none;}
-  .modal{
+  .modal,.modal-box{
     width:100%; max-width:560px; max-height:88vh; overflow-y:auto;
     background:var(--bg-elevated); border:1px solid var(--border-subtle);
     border-radius:20px; padding:22px;
@@ -672,6 +672,22 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="avatarCropOverlay" hidden>
+  <div class="modal-box" style="width:340px; text-align:center;">
+    <div class="modal-head"><span>✂️ 調整頭貼</span><button class="modal-close" id="closeAvatarCrop">×</button></div>
+    <div style="position:relative; width:220px; height:220px; margin:16px auto; overflow:hidden; border-radius:50%; border:2px solid var(--gold-500); background:#000; cursor:move;" id="avatarCropCircle">
+      <img id="avatarCropImg" style="position:absolute; transform-origin:center; user-select:none;" draggable="false">
+    </div>
+    <div style="margin:12px 0 6px; font-size:12px; color:var(--text-tertiary);">縮放</div>
+    <input type="range" id="avatarZoomSlider" min="100" max="400" value="100" style="width:80%; accent-color:var(--gold-500);">
+    <div style="margin:6px 0 12px; font-size:12px; color:var(--text-tertiary);">拖曳圖片調整位置</div>
+    <div style="display:flex; gap:10px; justify-content:flex-end; padding-top:12px; border-top:1px solid var(--border-subtle);">
+      <button class="btn-ghost" id="cancelAvatarCrop">取消</button>
+      <button class="btn-gold" id="confirmAvatarCrop">儲存頭貼</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="adminOverlay" hidden>
   <div class="modal admin-modal">
     <div class="modal-head">
@@ -812,17 +828,120 @@
   // ---------- Avatar ----------
   const changeAvatarBtn = document.getElementById('changeAvatarBtn');
   const avatarFileInput = document.getElementById('avatarFileInput');
+  const avatarCropOverlay = document.getElementById('avatarCropOverlay');
+  const avatarCropImg = document.getElementById('avatarCropImg');
+  const avatarZoomSlider = document.getElementById('avatarZoomSlider');
+  const avatarCropCircle = document.getElementById('avatarCropCircle');
+
+  const CROP_DIAM = 220;      // matches #avatarCropCircle width/height
+  const EXPORT_SIZE = 240;    // saved avatar resolution (kept close to CROP_DIAM for a WYSIWYG crop)
+
+  let cropOffsetX = 0, cropOffsetY = 0;
+  let baseScale = 1;   // "cover" scale that makes the photo fill the circle at zoom=1
+  let zoomFactor = 1;  // 1..4, driven by the slider, relative to baseScale
+  let isDragging = false, dragStartX = 0, dragStartY = 0, dragStartOX = 0, dragStartOY = 0;
+
+  function appliedScale(){ return baseScale*zoomFactor; }
+
+  // keeps the photo fully covering the circle - no black gaps at the edges
+  function clampCropOffsets(){
+    const w = avatarCropImg.naturalWidth*appliedScale();
+    const h = avatarCropImg.naturalHeight*appliedScale();
+    const maxX = Math.max(0,(w-CROP_DIAM)/2);
+    const maxY = Math.max(0,(h-CROP_DIAM)/2);
+    cropOffsetX = Math.min(maxX, Math.max(-maxX, cropOffsetX));
+    cropOffsetY = Math.min(maxY, Math.max(-maxY, cropOffsetY));
+  }
+
+  function updateCropTransform(){
+    clampCropOffsets();
+    avatarCropImg.style.transform = `translate(${cropOffsetX}px, ${cropOffsetY}px) scale(${appliedScale()})`;
+  }
+
   changeAvatarBtn.addEventListener('click',()=>{ if(!currentUser) return; avatarFileInput.click(); });
+
   avatarFileInput.addEventListener('change',()=>{
-    const file=avatarFileInput.files&&avatarFileInput.files[0];
-    if(!file||!currentUser) return;
-    const reader=new FileReader();
-    reader.onload=()=>{
-      currentUser.customAvatar=reader.result;
-      renderFeed();
-      avatarFileInput.value='';
+    const file = avatarFileInput.files&&avatarFileInput.files[0]; if(!file) return;
+    if(!file.type.startsWith('image/')){ alert('請選擇圖片檔案'); avatarFileInput.value=''; return; }
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      avatarCropImg.src = ev.target.result;
+      avatarCropImg.onload = ()=>{
+        baseScale = Math.max(CROP_DIAM/avatarCropImg.naturalWidth, CROP_DIAM/avatarCropImg.naturalHeight);
+        zoomFactor = 1;
+        cropOffsetX = 0; cropOffsetY = 0;
+        avatarZoomSlider.value = 100;
+        avatarCropImg.style.width = avatarCropImg.naturalWidth+'px';
+        avatarCropImg.style.height = avatarCropImg.naturalHeight+'px';
+        avatarCropImg.style.left = '50%';
+        avatarCropImg.style.top = '50%';
+        avatarCropImg.style.marginLeft = (-avatarCropImg.naturalWidth/2)+'px';
+        avatarCropImg.style.marginTop = (-avatarCropImg.naturalHeight/2)+'px';
+        updateCropTransform();
+        avatarCropOverlay.hidden = false;
+      };
     };
     reader.readAsDataURL(file);
+    avatarFileInput.value='';
+  });
+
+  avatarZoomSlider.addEventListener('input',()=>{
+    zoomFactor = avatarZoomSlider.value/100;
+    updateCropTransform();
+  });
+
+  avatarCropCircle.addEventListener('mousedown',(e)=>{
+    isDragging=true; dragStartX=e.clientX; dragStartY=e.clientY;
+    dragStartOX=cropOffsetX; dragStartOY=cropOffsetY; e.preventDefault();
+  });
+  document.addEventListener('mousemove',(e)=>{
+    if(!isDragging) return;
+    cropOffsetX = dragStartOX+(e.clientX-dragStartX);
+    cropOffsetY = dragStartOY+(e.clientY-dragStartY);
+    updateCropTransform();
+  });
+  document.addEventListener('mouseup',()=>{ isDragging=false; });
+  avatarCropCircle.addEventListener('touchstart',(e)=>{
+    isDragging=true; dragStartX=e.touches[0].clientX; dragStartY=e.touches[0].clientY;
+    dragStartOX=cropOffsetX; dragStartOY=cropOffsetY; e.preventDefault();
+  },{passive:false});
+  document.addEventListener('touchmove',(e)=>{
+    if(!isDragging) return;
+    cropOffsetX=dragStartOX+(e.touches[0].clientX-dragStartX);
+    cropOffsetY=dragStartOY+(e.touches[0].clientY-dragStartY);
+    updateCropTransform();
+  });
+  document.addEventListener('touchend',()=>{ isDragging=false; });
+
+  function closeAvatarCrop(){ avatarCropOverlay.hidden=true; }
+  document.getElementById('closeAvatarCrop').addEventListener('click', closeAvatarCrop);
+  document.getElementById('cancelAvatarCrop').addEventListener('click', closeAvatarCrop);
+
+  document.getElementById('confirmAvatarCrop').addEventListener('click', async()=>{
+    const confirmBtn = document.getElementById('confirmAvatarCrop');
+    confirmBtn.disabled = true;
+    const ratio = EXPORT_SIZE/CROP_DIAM;
+    const canvas = document.createElement('canvas');
+    canvas.width = EXPORT_SIZE; canvas.height = EXPORT_SIZE;
+    const ctx = canvas.getContext('2d');
+    ctx.beginPath(); ctx.arc(EXPORT_SIZE/2,EXPORT_SIZE/2,EXPORT_SIZE/2,0,Math.PI*2); ctx.clip();
+    const img = avatarCropImg;
+    const scale = appliedScale()*ratio;
+    const dx = EXPORT_SIZE/2 + cropOffsetX*ratio - (img.naturalWidth*scale)/2;
+    const dy = EXPORT_SIZE/2 + cropOffsetY*ratio - (img.naturalHeight*scale)/2;
+    ctx.drawImage(img, dx, dy, img.naturalWidth*scale, img.naturalHeight*scale);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    try{
+      await db.collection('users').doc(currentUser.id).update({ customAvatar: dataUrl });
+      currentUser.customAvatar = dataUrl;
+      closeAvatarCrop();
+      renderFeed();
+    }catch(err){
+      console.error('avatar save error:', err);
+      alert('頭貼儲存失敗，請稍後再試。');
+    }finally{
+      confirmBtn.disabled = false;
+    }
   });
 
   function avatarHTML(r,name,large){
@@ -1554,9 +1673,10 @@
       } else {
         // 新增模式：先加到本地 localPosts 立即顯示，再寫 Firestore
         const tempId='tmp'+Date.now();
+        const fileForPost=attachedFile||null; // capture before closeComposer() clears attachedFile
         const newPost={
           id:tempId, tab:currentTab, pinned, authorRole:role, author:currentUser.name,
-          time:'剛剛', bodyHTML:html, file:attachedFile||null,
+          time:'剛剛', bodyHTML:html, file:fileForPost,
           likes:0, likedByMe:false, commentsOpen:false, comments:[]
         };
         if(pinned) currentPosts().forEach(p=>p.pinned=false);
@@ -1572,7 +1692,7 @@
         }
         const docRef=await db.collection('posts').add({
           tab:currentTab, authorRole:role, author:currentUser.name,
-          bodyHTML:html, pinned, likes:0, likedBy:[], file:attachedFile||null,
+          bodyHTML:html, pinned, likes:0, likedBy:[], file:fileForPost,
           comments:[], timestamp:firebase.firestore.FieldValue.serverTimestamp(), timeLabel:'剛剛'
         });
         // 把臨時 ID 換成真實 Firestore ID
