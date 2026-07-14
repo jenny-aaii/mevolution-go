@@ -675,7 +675,7 @@
 <div class="modal-overlay" id="avatarCropOverlay" hidden>
   <div class="modal-box" style="width:340px; text-align:center;">
     <div class="modal-head"><span>✂️ 調整頭貼</span><button class="modal-close" id="closeAvatarCrop">×</button></div>
-    <div style="position:relative; width:220px; height:220px; margin:16px auto; overflow:hidden; border-radius:50%; border:2px solid var(--gold-500); background:#000; cursor:move;" id="avatarCropCircle">
+    <div style="position:relative; width:220px; height:220px; margin:16px auto; overflow:hidden; border-radius:50%; border:2px solid var(--gold-500); background:#000; cursor:move; touch-action:none;" id="avatarCropCircle">
       <img id="avatarCropImg" style="position:absolute; transform-origin:center; user-select:none;" draggable="false">
     </div>
     <div style="margin:12px 0 6px; font-size:12px; color:var(--text-tertiary);">縮放</div>
@@ -890,28 +890,23 @@
     updateCropTransform();
   });
 
-  avatarCropCircle.addEventListener('mousedown',(e)=>{
+  // Pointer Events (unifies mouse/touch/pen) + pointer capture so the drag
+  // stays bound to the circle for the whole gesture, even if the pointer
+  // moves quickly or briefly leaves the element.
+  avatarCropCircle.addEventListener('pointerdown',(e)=>{
     isDragging=true; dragStartX=e.clientX; dragStartY=e.clientY;
-    dragStartOX=cropOffsetX; dragStartOY=cropOffsetY; e.preventDefault();
+    dragStartOX=cropOffsetX; dragStartOY=cropOffsetY;
+    avatarCropCircle.setPointerCapture(e.pointerId);
+    e.preventDefault();
   });
-  document.addEventListener('mousemove',(e)=>{
+  avatarCropCircle.addEventListener('pointermove',(e)=>{
     if(!isDragging) return;
     cropOffsetX = dragStartOX+(e.clientX-dragStartX);
     cropOffsetY = dragStartOY+(e.clientY-dragStartY);
     updateCropTransform();
   });
-  document.addEventListener('mouseup',()=>{ isDragging=false; });
-  avatarCropCircle.addEventListener('touchstart',(e)=>{
-    isDragging=true; dragStartX=e.touches[0].clientX; dragStartY=e.touches[0].clientY;
-    dragStartOX=cropOffsetX; dragStartOY=cropOffsetY; e.preventDefault();
-  },{passive:false});
-  document.addEventListener('touchmove',(e)=>{
-    if(!isDragging) return;
-    cropOffsetX=dragStartOX+(e.touches[0].clientX-dragStartX);
-    cropOffsetY=dragStartOY+(e.touches[0].clientY-dragStartY);
-    updateCropTransform();
-  });
-  document.addEventListener('touchend',()=>{ isDragging=false; });
+  avatarCropCircle.addEventListener('pointerup',()=>{ isDragging=false; });
+  avatarCropCircle.addEventListener('pointercancel',()=>{ isDragging=false; });
 
   function closeAvatarCrop(){ avatarCropOverlay.hidden=true; }
   document.getElementById('closeAvatarCrop').addEventListener('click', closeAvatarCrop);
