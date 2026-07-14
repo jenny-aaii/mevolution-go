@@ -272,6 +272,8 @@
   .avatar.avatar-photo{background:var(--bg-elevated-3); border:1px solid var(--border-subtle); padding:0;}
   .avatar.avatar-photo img{width:100%; height:100%; object-fit:cover; border-radius:50%;}
   .avatar img{width:66%; height:66%; object-fit:contain; display:block;}
+  .avatar.avatar-clickable{cursor:zoom-in; transition:transform .15s ease;}
+  .avatar.avatar-clickable:hover{transform:scale(1.06);}
   .icon-on-dark{filter:invert(1) brightness(1.35);}
   .post-meta{display:flex; flex-direction:column; gap:2px;}
   .post-name-row{display:flex; align-items:center; gap:7px;}
@@ -688,6 +690,13 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="avatarViewOverlay" hidden style="background:rgba(8,6,3,0.85);">
+  <div style="position:relative; max-width:min(80vw,360px);">
+    <button class="modal-close" id="closeAvatarView" style="position:absolute; top:-38px; right:0; font-size:26px;">×</button>
+    <img id="avatarViewImg" alt="" style="display:block; width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:50%; border:2px solid var(--gold-500); box-shadow:0 20px 60px -12px rgba(0,0,0,.6);">
+  </div>
+</div>
+
 <div class="modal-overlay" id="adminOverlay" hidden>
   <div class="modal admin-modal">
     <div class="modal-head">
@@ -939,16 +948,36 @@
     }
   });
 
-  function avatarHTML(r,name,large){
+  // ---------- Avatar lightbox (click a post's avatar to view it large) ----------
+  const avatarViewOverlay = document.getElementById('avatarViewOverlay');
+  const avatarViewImg = document.getElementById('avatarViewImg');
+  function openAvatarView(src){
+    avatarViewImg.src = src;
+    avatarViewOverlay.hidden = false;
+  }
+  function closeAvatarView(){ avatarViewOverlay.hidden = true; avatarViewImg.src=''; }
+  document.getElementById('closeAvatarView').addEventListener('click', closeAvatarView);
+  avatarViewOverlay.addEventListener('click',(e)=>{ if(e.target===avatarViewOverlay) closeAvatarView(); });
+  document.addEventListener('keydown',(e)=>{ if(e.key==='Escape' && !avatarViewOverlay.hidden) closeAvatarView(); });
+  feed.addEventListener('keydown',(e)=>{
+    if((e.key==='Enter'||e.key===' ') && e.target.closest('[data-action="view-avatar"]')){
+      e.preventDefault();
+      e.target.closest('[data-action="view-avatar"]').click();
+    }
+  });
+
+  function avatarHTML(r,name,large,clickable){
+    const clickAttrs = clickable ? ' data-action="view-avatar" tabindex="0" role="button" aria-label="放大檢視頭貼"' : '';
+    const clickClass = clickable ? ' avatar-clickable' : '';
     const u=roster.find(x=>x.name===name);
     if(u&&u.customAvatar){
-      return '<div class="avatar avatar-photo'+(large?' avatar-lg':'')+'"><img src="'+u.customAvatar+'" alt=""></div>';
+      return '<div class="avatar avatar-photo'+(large?' avatar-lg':'')+clickClass+'"'+clickAttrs+'><img src="'+u.customAvatar+'" alt=""></div>';
     }
     const isHr=u&&u.allowed&&u.allowed.includes('hr');
     let icon=r==='instructor'?ICON_COURSE:ICON_STUDENT;
     let cls=r==='instructor'?'instructor':'student';
     if(isHr){icon=ICON_HR;cls='hr';}
-    return '<div class="avatar '+cls+(large?' avatar-lg':'')+'"><img src="'+icon+'" alt=""></div>';
+    return '<div class="avatar '+cls+(large?' avatar-lg':'')+clickClass+'"'+clickAttrs+'><img src="'+icon+'" alt=""></div>';
   }
 
   function renderRosterPicker(){}
@@ -1214,7 +1243,7 @@
       '<article class="post '+(p.pinned?'pinned':'')+'" data-id="'+p.id+'">'+
         (p.pinned ? '<div class="pin-flag">📌 置頂公告</div>' : '')+
         '<div class="post-head">'+
-          avatarHTML(p.authorRole, p.author)+
+          avatarHTML(p.authorRole, p.author, false, true)+
           '<div class="post-meta">'+
             '<div class="post-name-row"><span class="post-name">'+p.author+'</span>'+
               tagHTML+
@@ -1312,6 +1341,12 @@
     const action = e.target.dataset.action || e.target.closest('[data-action]')?.dataset.action;
     const btn = e.target.closest('[data-action]');
     if(!btn || !action) return;
+
+    if(action==='view-avatar'){
+      const img = btn.querySelector('img');
+      if(img) openAvatarView(img.src);
+      return;
+    }
 
     // 找到對應的 post 物件
     const card = btn.closest('.post');
