@@ -540,6 +540,15 @@
 
   /* ---------- admin panel ---------- */
   .admin-modal{max-width:680px;}
+  .admin-filter-row{display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap;}
+  .admin-filter-btn{
+    font-size:12px; padding:6px 13px; border-radius:999px;
+    background:var(--bg-elevated-2); border:1px solid var(--border-subtle);
+    color:var(--text-secondary); font-family:inherit; cursor:pointer;
+    transition:border-color .15s, color .15s, background .15s;
+  }
+  .admin-filter-btn:hover{border-color:var(--gold-600); color:var(--gold-300);}
+  .admin-filter-btn.active{background:var(--gold-500); color:#1a140c; border-color:var(--gold-500); font-weight:700;}
   .admin-table-wrap{overflow-x:auto; margin-bottom:18px; border:1px solid var(--border-faint); border-radius:10px;}
   .admin-table{width:100%; border-collapse:collapse; font-size:12.5px;}
   .admin-table th{
@@ -733,6 +742,13 @@
     <div class="modal-head">
       <h3>👥 名單與頁籤權限管理</h3>
       <button class="modal-close" id="closeAdmin">×</button>
+    </div>
+    <div class="admin-filter-row" id="adminFilterRow">
+      <button class="admin-filter-btn active" data-role-filter="all">全部</button>
+      <button class="admin-filter-btn" data-role-filter="instructor">講師</button>
+      <button class="admin-filter-btn" data-role-filter="student">實習生</button>
+      <button class="admin-filter-btn" data-role-filter="hr">HR</button>
+      <span id="adminFilterCount" style="align-self:center; font-size:11px; color:var(--text-tertiary); font-family:var(--font-mono); margin-left:4px;"></span>
     </div>
     <div class="admin-table-wrap">
       <table class="admin-table" id="adminTable"></table>
@@ -1172,9 +1188,19 @@
 
   function isHrAll(u){ return u.role==='hr'; }
 
+  let adminRoleFilter='all';
+  document.getElementById('adminFilterRow').addEventListener('click',(e)=>{
+    const btn=e.target.closest('[data-role-filter]'); if(!btn) return;
+    adminRoleFilter=btn.dataset.roleFilter;
+    document.querySelectorAll('#adminFilterRow .admin-filter-btn').forEach(b=>b.classList.toggle('active', b===btn));
+    renderAdminTable();
+  });
+
   function renderAdminTable(){
     const head='<tr><th>姓名</th><th>信箱</th><th>角色</th><th>可進入頁籤</th><th></th></tr>';
-    const rows=roster.map(u=>{
+    const filteredRoster = adminRoleFilter==='all' ? roster : roster.filter(u=>u.role===adminRoleFilter);
+    document.getElementById('adminFilterCount').textContent = '共 '+filteredRoster.length+' 位';
+    const rows=filteredRoster.map(u=>{
       const hrAll=isHrAll(u);
       const checks=TABS.map(t=>
         '<label><input type="checkbox" data-uid="'+u.id+'" data-tab="'+t.id+'" '+
