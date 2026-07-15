@@ -272,9 +272,28 @@
   .avatar.avatar-photo{background:var(--bg-elevated-3); border:1px solid var(--border-subtle); padding:0;}
   .avatar.avatar-photo img{width:100%; height:100%; object-fit:cover; border-radius:50%;}
   .avatar img{width:66%; height:66%; object-fit:contain; display:block;}
-  .avatar.avatar-clickable{cursor:zoom-in; transition:transform .15s ease;}
+  .avatar.avatar-clickable{cursor:pointer; transition:transform .15s ease;}
   .avatar.avatar-clickable:hover{transform:scale(1.06);}
   .icon-on-dark{filter:invert(1) brightness(1.35);}
+
+  /* ---------- avatar contact card ---------- */
+  .avatar-card{
+    position:fixed; width:260px; max-width:calc(100vw - 24px);
+    background:var(--bg-elevated); border:1px solid var(--border-subtle);
+    border-radius:16px; padding:20px;
+    box-shadow:0 20px 60px -12px rgba(0,0,0,.6);
+  }
+  .avatar-card-avatar{
+    width:64px; height:64px; border-radius:50%; overflow:hidden; margin-bottom:12px;
+    border:2px solid var(--gold-500); background:var(--bg-elevated-3);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .avatar-card-avatar img{width:100%; height:100%; object-fit:cover; display:block;}
+  .avatar-card-avatar.icon-avatar img{width:60%; height:60%; object-fit:contain;}
+  .avatar-card-name{font-family:var(--font-display); font-weight:700; font-size:16px; margin-bottom:6px;}
+  .avatar-card-role{margin-bottom:16px;}
+  .avatar-card-bu-label{font-size:11px; color:var(--text-tertiary); font-family:var(--font-mono); letter-spacing:.03em; margin-bottom:6px;}
+  #avatarCardTabs{justify-content:flex-start;}
   .post-meta{display:flex; flex-direction:column; gap:2px;}
   .post-name-row{display:flex; align-items:center; gap:7px;}
   .post-name{font-weight:700; font-size:14.5px;}
@@ -690,10 +709,14 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="avatarViewOverlay" hidden style="background:rgba(8,6,3,0.85);">
-  <div style="position:relative; max-width:min(80vw,360px);">
-    <button class="modal-close" id="closeAvatarView" style="position:absolute; top:-38px; right:0; font-size:26px;">×</button>
-    <img id="avatarViewImg" alt="" style="display:block; width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:50%; border:2px solid var(--gold-500); box-shadow:0 20px 60px -12px rgba(0,0,0,.6);">
+<div id="avatarViewOverlay" hidden style="position:fixed; inset:0; z-index:100;">
+  <div id="avatarCard" class="avatar-card">
+    <button class="modal-close" id="closeAvatarView" style="position:absolute; top:10px; right:12px;">×</button>
+    <div class="avatar-card-avatar" id="avatarCardAvatar"></div>
+    <div class="avatar-card-name" id="avatarCardName"></div>
+    <div class="avatar-card-role" id="avatarCardRole"></div>
+    <div class="avatar-card-bu-label">所屬 BU</div>
+    <div class="tab-chip-row" id="avatarCardTabs"></div>
   </div>
 </div>
 
@@ -948,17 +971,58 @@
     }
   });
 
-  // ---------- Avatar lightbox (click a post's avatar to view it large) ----------
+  // ---------- Avatar contact card (click a post's avatar) ----------
   const avatarViewOverlay = document.getElementById('avatarViewOverlay');
-  const avatarViewImg = document.getElementById('avatarViewImg');
-  function openAvatarView(src){
-    avatarViewImg.src = src;
-    avatarViewOverlay.hidden = false;
+  const avatarCard = document.getElementById('avatarCard');
+  const avatarCardAvatar = document.getElementById('avatarCardAvatar');
+  const avatarCardName = document.getElementById('avatarCardName');
+  const avatarCardRole = document.getElementById('avatarCardRole');
+  const avatarCardTabs = document.getElementById('avatarCardTabs');
+
+  function roleLabelText(r, name){
+    if(r==='hr') return 'HR';
+    if(r==='instructor'){
+      const u = name ? roster.find(x=>x.name===name) : null;
+      const isHR = u && u.allowed && u.allowed.includes('hr');
+      return isHR ? 'HR' : '講師';
+    }
+    if(r==='student') return '實習生';
+    return '';
   }
-  function closeAvatarView(){ avatarViewOverlay.hidden = true; avatarViewImg.src=''; }
+
+  function positionAvatarCard(anchorEl){
+    const r = anchorEl.getBoundingClientRect();
+    const cardWidth = avatarCard.offsetWidth || 260;
+    const cardHeight = avatarCard.offsetHeight || 220;
+    let left = r.left;
+    let top = r.bottom + 8;
+    if(left + cardWidth > window.innerWidth - 12) left = window.innerWidth - cardWidth - 12;
+    if(left < 12) left = 12;
+    if(top + cardHeight > window.innerHeight - 12) top = r.top - cardHeight - 8;
+    if(top < 12) top = 12;
+    avatarCard.style.left = left+'px';
+    avatarCard.style.top = top+'px';
+  }
+
+  function openAvatarView(anchorEl, name, r){
+    const u = roster.find(x=>x.name===name);
+    const imgEl = anchorEl.querySelector('img');
+    avatarCardAvatar.innerHTML = imgEl ? '<img src="'+imgEl.src+'" alt="">' : '';
+    avatarCardAvatar.classList.toggle('icon-avatar', !(u && u.customAvatar));
+    avatarCardName.textContent = name || '';
+    avatarCardRole.innerHTML = roleTagHTML(r, name);
+    const tabs = u && u.allowed ? TABS.filter(t=>u.allowed.includes(t.id)) : [];
+    avatarCardTabs.innerHTML = tabs.length
+      ? tabs.map(t=>'<span class="tab-chip">'+t.label+'</span>').join('')
+      : '<span class="tab-chip">—</span>';
+    avatarViewOverlay.hidden = false;
+    positionAvatarCard(anchorEl);
+  }
+  function closeAvatarView(){ avatarViewOverlay.hidden = true; }
   document.getElementById('closeAvatarView').addEventListener('click', closeAvatarView);
   avatarViewOverlay.addEventListener('click',(e)=>{ if(e.target===avatarViewOverlay) closeAvatarView(); });
   document.addEventListener('keydown',(e)=>{ if(e.key==='Escape' && !avatarViewOverlay.hidden) closeAvatarView(); });
+  window.addEventListener('resize',()=>{ if(!avatarViewOverlay.hidden) closeAvatarView(); });
   feed.addEventListener('keydown',(e)=>{
     if((e.key==='Enter'||e.key===' ') && e.target.closest('[data-action="view-avatar"]')){
       e.preventDefault();
@@ -967,7 +1031,9 @@
   });
 
   function avatarHTML(r,name,large,clickable){
-    const clickAttrs = clickable ? ' data-action="view-avatar" tabindex="0" role="button" aria-label="放大檢視頭貼"' : '';
+    const clickAttrs = clickable
+      ? ' data-action="view-avatar" data-avatar-name="'+escapeHtml(name)+'" data-avatar-role="'+r+'" tabindex="0" role="button" aria-label="查看 '+escapeHtml(name)+' 的資訊"'
+      : '';
     const clickClass = clickable ? ' avatar-clickable' : '';
     const u=roster.find(x=>x.name===name);
     if(u&&u.customAvatar){
@@ -1343,8 +1409,7 @@
     if(!btn || !action) return;
 
     if(action==='view-avatar'){
-      const img = btn.querySelector('img');
-      if(img) openAvatarView(img.src);
+      openAvatarView(btn, btn.dataset.avatarName, btn.dataset.avatarRole);
       return;
     }
 
