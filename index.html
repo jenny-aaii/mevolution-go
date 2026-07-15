@@ -1337,11 +1337,8 @@
 
     const tagHTML = roleTagHTML(p.authorRole, p.author);
 
-    // 'hr' role, or a 'legacy' instructor granted HR-tab access (same rule used for the admin panel button)
-    const isModerator = role==='hr' || (role==='instructor' && currentUser.allowed && currentUser.allowed.includes('hr'));
-    const canManagePost = isModerator || p.author === currentUser.name;
-    const canDeleteComment = isModerator || role==='instructor';
-    const canEditAnyComment = isModerator;
+    // everyone can only edit/delete their own posts and comments, regardless of role
+    const canManagePost = p.author === currentUser.name;
 
     return (
       '<article class="post '+(p.pinned?'pinned':'')+'" data-id="'+p.id+'">'+
@@ -1370,7 +1367,7 @@
           '<button class="comment-toggle" data-action="toggle-comments">💬 留言 '+p.comments.length+' <span class="chevron '+(openCommentSet.has(p.id)?'open':'')+'">⌄</span></button>'+
         '</div>'+
         '<div class="comments '+(openCommentSet.has(p.id)?'':'collapsed')+'">'+
-          p.comments.map(c=>renderComment(c, p.id, canDeleteComment, canEditAnyComment)).join('')+
+          p.comments.map(c=>renderComment(c, p.id)).join('')+
           '<div class="comment-input-row">'+
             '<input type="text" placeholder="留言互動…" data-comment-input="'+p.id+'">'+
             '<button class="send-btn" data-action="send-comment" data-pid="'+p.id+'">送出</button>'+
@@ -1399,9 +1396,8 @@
     return '';
   }
 
-  function renderComment(c, pid, canDeleteComment, canEditAnyComment){
+  function renderComment(c, pid){
     const isMine = c.role===role && c.name===currentUser.name;
-    const canEditThis = isMine || canEditAnyComment;
     const editedTag = c.edited ? '<span class="comment-edited">已編輯 · '+c.editedTime+'</span>' : '';
     if(c.editing){
       return (
@@ -1431,8 +1427,8 @@
           '<div class="comment-text">'+escapeHtml(c.text)+'</div>'+
         '</div>'+
         '<div class="comment-actions">'+
-          (canEditThis ? '<button class="comment-edit-btn" data-action="start-edit" data-pid="'+pid+'" data-cid="'+c.id+'">✎</button>' : '')+
-          (canDeleteComment ? '<button class="comment-del" data-action="delete-comment" data-pid="'+pid+'" data-cid="'+c.id+'">🗑</button>' : '')+
+          (isMine ? '<button class="comment-edit-btn" data-action="start-edit" data-pid="'+pid+'" data-cid="'+c.id+'">✎</button>' : '')+
+          (isMine ? '<button class="comment-del" data-action="delete-comment" data-pid="'+pid+'" data-cid="'+c.id+'">🗑</button>' : '')+
         '</div>'+
       '</div>'
     );
