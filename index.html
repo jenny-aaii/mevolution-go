@@ -825,7 +825,8 @@
     {id:'medialand', label:'Medialand'},
     {id:'mx',        label:'MX'},
     {id:'meshplus',  label:'MESh+'},
-    {id:'hr',        label:'HR'}
+    {id:'hr',        label:'HR'},
+    {id:'hq',        label:'總部'}
   ];
   const TAB_IDS = TABS.map(t=>t.id);
 
@@ -1037,7 +1038,17 @@
     avatarCardAvatar.classList.toggle('icon-avatar', !(u && u.customAvatar));
     avatarCardName.textContent = name || '';
     avatarCardRole.innerHTML = roleTagHTML(r, name);
-    const tabs = u && u.allowed ? TABS.filter(t=>u.allowed.includes(t.id)) : [];
+
+    // HR and interns are org-wide (總部); instructors belong to whichever real BU tabs they're assigned
+    const effectiveRole = u ? u.role : r;
+    let tabs;
+    if(effectiveRole==='hr' || effectiveRole==='student'){
+      const hq = TABS.find(t=>t.id==='hq');
+      tabs = hq ? [hq] : [];
+    }else{
+      const buTabs = TABS.filter(t=>t.id!=='hr' && t.id!=='hq');
+      tabs = u && u.allowed ? buTabs.filter(t=>u.allowed.includes(t.id)) : [];
+    }
     avatarCardTabs.innerHTML = tabs.length
       ? tabs.map(t=>'<span class="tab-chip">'+t.label+'</span>').join('')
       : '<span class="tab-chip">—</span>';
