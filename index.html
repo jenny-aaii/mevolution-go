@@ -842,7 +842,7 @@
           const data=d.data();
           return {
             id:d.id, pinned:data.pinned||false,
-            authorRole:data.authorRole, author:data.author,
+            authorRole:data.authorRole, author:data.author, authorId:data.authorId||null,
             time:data.timeLabel||'方才', bodyHTML:data.bodyHTML||'',
             file:data.file||null, likes:data.likes||0,
             likedByMe:data.likedBy&&currentUser?data.likedBy.includes(currentUser.email):false,
@@ -1338,7 +1338,8 @@
     const tagHTML = roleTagHTML(p.authorRole, p.author);
 
     // everyone can only edit/delete their own posts and comments, regardless of role
-    const canManagePost = p.author === currentUser.name;
+    // prefer matching the stable account id; older posts predate that field, so fall back to name
+    const canManagePost = p.authorId ? p.authorId===currentUser.id : p.author===currentUser.name;
 
     return (
       '<article class="post '+(p.pinned?'pinned':'')+'" data-id="'+p.id+'">'+
@@ -1397,7 +1398,7 @@
   }
 
   function renderComment(c, pid){
-    const isMine = c.role===role && c.name===currentUser.name;
+    const isMine = c.authorId ? c.authorId===currentUser.id : (c.role===role && c.name===currentUser.name);
     const editedTag = c.edited ? '<span class="comment-edited">已編輯 · '+c.editedTime+'</span>' : '';
     if(c.editing){
       return (
@@ -1475,7 +1476,7 @@
       const input = card.querySelector('[data-comment-input="'+pid+'"]');
       const text = input?.value.trim(); if(!text) return;
       openCommentSet.add(pid); // 先確保留言區保持開啟
-      const nc={id:'c'+Date.now(),role:role,name:currentUser.name,time:'剛剛',text,edited:false,editedTime:null};
+      const nc={id:'c'+Date.now(),role:role,name:currentUser.name,authorId:currentUser.id,time:'剛剛',text,edited:false,editedTime:null};
       try{
         await db.collection('posts').doc(pid).update({comments:firebase.firestore.FieldValue.arrayUnion(nc)});
         input.value='';
@@ -1806,7 +1807,7 @@
         const tempId='tmp'+Date.now();
         const fileForPost=attachedFile||null; // capture before closeComposer() clears attachedFile
         const newPost={
-          id:tempId, tab:currentTab, pinned, authorRole:role, author:currentUser.name,
+          id:tempId, tab:currentTab, pinned, authorRole:role, author:currentUser.name, authorId:currentUser.id,
           time:'剛剛', bodyHTML:html, file:fileForPost,
           likes:0, likedByMe:false, commentsOpen:false, comments:[]
         };
@@ -1822,7 +1823,7 @@
           await batch.commit();
         }
         const docRef=await db.collection('posts').add({
-          tab:currentTab, authorRole:role, author:currentUser.name,
+          tab:currentTab, authorRole:role, author:currentUser.name, authorId:currentUser.id,
           bodyHTML:html, pinned, likes:0, likedBy:[], file:fileForPost,
           comments:[], timestamp:firebase.firestore.FieldValue.serverTimestamp(), timeLabel:'剛剛'
         });
