@@ -855,11 +855,11 @@
       .where('tab','==',currentTab)
       .onSnapshot(snapshot=>{
         localPosts = snapshot.docs.map(d=>{
-          const data=d.data();
+          const data=d.data({serverTimestamps:'estimate'});
           return {
             id:d.id, pinned:data.pinned||false,
             authorRole:data.authorRole, author:data.author, authorId:data.authorId||null,
-            time:data.timeLabel||'方才', bodyHTML:data.bodyHTML||'',
+            time:data.timestamp?formatTimeLabel(data.timestamp.toDate()):(data.timeLabel||'剛剛'), bodyHTML:data.bodyHTML||'',
             file:data.file||null, likes:data.likes||0,
             likedByMe:data.likedBy&&currentUser?data.likedBy.includes(currentUser.email):false,
             commentsOpen:openCommentSet.has(d.id),
@@ -1404,6 +1404,19 @@
     );
   }
 
+  function formatTimeLabel(date){
+    if(!date) return '剛剛';
+    const diffMin = Math.floor((Date.now()-date.getTime())/60000);
+    if(diffMin < 1) return '剛剛';
+    if(diffMin < 60) return diffMin+' 分鐘前';
+    const diffHr = Math.floor(diffMin/60);
+    const now = new Date();
+    if(diffHr < 24 && now.toDateString()===date.toDateString()) return diffHr+' 小時前';
+    const pad=n=>String(n).padStart(2,'0');
+    const yearPrefix = now.getFullYear()===date.getFullYear() ? '' : date.getFullYear()+'/';
+    return yearPrefix+pad(date.getMonth()+1)+'/'+pad(date.getDate())+' '+pad(date.getHours())+':'+pad(date.getMinutes());
+  }
+
   function escapeHtml(text){
     return String(text)
       .replace(/&/g,'&amp;')
@@ -1425,7 +1438,9 @@
 
   function renderComment(c, pid){
     const isMine = c.authorId ? c.authorId===currentUser.id : (c.role===role && c.name===currentUser.name);
-    const editedTag = c.edited ? '<span class="comment-edited">已編輯 · '+c.editedTime+'</span>' : '';
+    const timeLabel = c.ts ? formatTimeLabel(new Date(c.ts)) : (c.time||'剛剛');
+    const editedTimeLabel = c.editedTs ? formatTimeLabel(new Date(c.editedTs)) : (c.editedTime||'剛剛');
+    const editedTag = c.edited ? '<span class="comment-edited">已編輯 · '+editedTimeLabel+'</span>' : '';
     if(c.editing){
       return (
         '<div class="comment" data-cid="'+c.id+'">'+
@@ -1449,7 +1464,7 @@
         '<div class="comment-bubble">'+
           '<div class="comment-top"><span class="comment-name">'+c.name+'</span>'+
             roleTagHTML(c.role, c.name)+
-            '<span class="comment-time">'+c.time+'</span>'+editedTag+
+            '<span class="comment-time">'+timeLabel+'</span>'+editedTag+
           '</div>'+
           '<div class="comment-text">'+escapeHtml(c.text)+'</div>'+
         '</div>'+
@@ -1502,7 +1517,7 @@
       const input = card.querySelector('[data-comment-input="'+pid+'"]');
       const text = input?.value.trim(); if(!text) return;
       openCommentSet.add(pid); // 先確保留言區保持開啟
-      const nc={id:'c'+Date.now(),role:role,name:currentUser.name,authorId:currentUser.id,time:'剛剛',text,edited:false,editedTime:null};
+      const nc={id:'c'+Date.now(),role:role,name:currentUser.name,authorId:currentUser.id,ts:Date.now(),time:'剛剛',text,edited:false,editedTime:null};
       try{
         await db.collection('posts').doc(pid).update({comments:firebase.firestore.FieldValue.arrayUnion(nc)});
         input.value='';
@@ -1544,7 +1559,7 @@
       const cid = btn.dataset.cid;
       const inp = card.querySelector('[data-edit-input="'+pid+':'+cid+'"]'); if(!inp) return;
       const newText = inp.value.trim(); if(!newText) return;
-      const newComments = p.comments.map(c=>c.id===cid?{...c,text:newText,edited:true,editedTime:'剛剛',editing:false}:c);
+      const newComments = p.comments.map(c=>c.id===cid?{...c,text:newText,edited:true,editedTs:Date.now(),editedTime:'剛剛',editing:false}:c);
       await db.collection('posts').doc(pid).update({comments:newComments});
     }
   });
