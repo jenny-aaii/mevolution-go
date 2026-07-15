@@ -1159,14 +1159,14 @@
     const isLegacyHR = role==='instructor' && currentUser.allowed && currentUser.allowed.includes('hr');
     const roleName=role==='hr'?'HR':isLegacyHR?'HR':(role==='instructor'?'講師':'實習生');
     roleBadge.innerHTML=(currentUser?currentUser.name:'')+' · '+roleName;
-    composerTrigger.hidden=!((role==='instructor'||role==='hr')&&currentUser.allowed.includes(currentTab));
+    composerTrigger.hidden=!(role==='hr'||(role==='instructor'&&currentUser.allowed.includes(currentTab)));
     adminPanelBtn.hidden=!(role==='hr'||(role==='instructor'&&currentUser.allowed&&currentUser.allowed.includes('hr')));
   }
 
   function renderTabBar(){
     const tabBar=document.getElementById('tabBar');
     tabBar.innerHTML=TABS
-      .filter(t=>currentUser&&currentUser.allowed.includes(t.id))
+      .filter(t=>currentUser&&(role==='hr'||currentUser.allowed.includes(t.id)))
       .map(t=>'<button class="tab-btn'+(t.id===currentTab?' active':'')+'" data-tab="'+t.id+'">'+t.label+'</button>')
       .join('');
     tabBar.querySelectorAll('.tab-btn').forEach(btn=>{
@@ -1215,7 +1215,7 @@
       const hrAll=isHrAll(u);
       const checks=TABS.map(t=>
         '<label><input type="checkbox" data-uid="'+u.id+'" data-tab="'+t.id+'" '+
-          (u.allowed.includes(t.id)?'checked':'')+(hrAll?' disabled':'')+'> '+t.label+'</label>'
+          (hrAll||u.allowed.includes(t.id)?'checked':'')+(hrAll?' disabled':'')+'> '+t.label+'</label>'
       ).join('');
       return (
         '<tr class="admin-row" data-row-uid="'+u.id+'">'+          '<td class="admin-name-cell">'+
