@@ -365,6 +365,13 @@
   }
   .comment-toggle:hover, .star-btn:hover{color:var(--gold-300);}
   .chevron{transition:transform .2s ease;}
+  .unread-dot{
+    display:inline-block; width:7px; height:7px; border-radius:50%;
+    background:var(--gold-400); box-shadow:0 0 5px var(--gold-glow); vertical-align:middle;
+  }
+  .comment-new{
+    background:rgba(216,179,106,0.06); border-radius:10px; margin:0 -8px; padding:10px 8px !important;
+  }
   .chevron.open{transform:rotate(180deg);}
 
   /* ---------- comments ---------- */
@@ -791,6 +798,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-storage-compat.js"></script>
 <script>
 (function(){
 
@@ -827,6 +835,7 @@
   });
   const db = firebase.firestore();
   const auth = firebase.auth();
+  const storage = firebase.storage();
 
   let role = null;
   const TABS = [
@@ -845,6 +854,18 @@
   let currentUser = null;
   let currentTab = null;
 
+  // ---------- 站內未讀提醒（存在瀏覽器本機，不跨裝置）----------
+  let lastSeenMap = {};
+  function loadLastSeen(){
+    if(!currentUser){ lastSeenMap={}; return; }
+    try{ lastSeenMap = JSON.parse(localStorage.getItem('lastSeen_'+currentUser.id)||'{}'); }
+    catch(e){ lastSeenMap={}; }
+  }
+  function markTabSeen(tabId){
+    lastSeenMap[tabId] = Date.now();
+    try{ localStorage.setItem('lastSeen_'+currentUser.id, JSON.stringify(lastSeenMap)); }catch(e){}
+  }
+
   // ---------- Firestore: users listener ----------
   db.collection('users').onSnapshot(snapshot=>{
     roster = snapshot.docs.map(d=>({id:d.id,...d.data()}));
@@ -860,11 +881,16 @@
   function subscribeToCurrentTab(){
     if(unsubPosts) unsubPosts();
     localPosts = [];
+    const tabSeenAt = lastSeenMap[currentTab] || 0; // 這個頁籤上次看到的時間點，固定住直到下次切換頁籤
     unsubPosts = db.collection('posts')
       .where('tab','==',currentTab)
       .onSnapshot(snapshot=>{
         localPosts = snapshot.docs.map(d=>{
           const data=d.data({serverTimestamps:'estimate'});
+          const comments=(data.comments||[]).map(c=>({
+            ...c,
+            isNew: !!(c.ts && c.ts>tabSeenAt && c.authorId!==(currentUser&&currentUser.id))
+          }));
           return {
             id:d.id, pinned:data.pinned||false,
             authorRole:data.authorRole, author:data.author, authorId:data.authorId||null,
@@ -872,11 +898,12 @@
             file:data.file||null, likes:data.likes||0,
             likedByMe:data.likedBy&&currentUser?data.likedBy.includes(currentUser.email):false,
             commentsOpen:openCommentSet.has(d.id),
-            comments:data.comments||[]
+            comments:comments
           };
         });
         renderFeed();
       }, err=>console.error('posts listener:',err));
+    markTabSeen(currentTab);
   }
 
   function currentPosts(){ return localPosts; }
@@ -1152,6 +1179,7 @@
   function loginAs(u,alreadyInApp){
     currentUser=u; role=u.role;
     currentTab=u.allowed[0]||TAB_IDS[0];
+    loadLastSeen();
     if(alreadyInApp){
       refreshChrome(); renderTabBar(); subscribeToCurrentTab();
     } else { enterApp(); }
@@ -1360,9 +1388,11 @@
   }
 
   function renderPost(p){
+    const hasNewComment = p.comments.some(c=>c.isNew);
+    const fileHref = p.file ? (p.file.url || p.file.dataUrl) : null;
     const fileBlock = p.file ? (
-      p.file.dataUrl
-        ? '<a class="attachment" href="'+p.file.dataUrl+'" download="'+p.file.name+'" style="text-decoration:none;">'+
+      fileHref
+        ? '<a class="attachment" href="'+fileHref+'" download="'+p.file.name+'" target="_blank" rel="noopener" style="text-decoration:none;">'+
             '<span class="file-ext">'+p.file.ext+'</span>'+
             '<span class="file-name" title="'+p.file.name+'">'+p.file.name+'</span>'+
             '<span class="file-size">'+p.file.size+'</span>'+
@@ -1410,7 +1440,7 @@
           '<button class="star-btn '+(p.likedByMe?'lit':'')+'" data-action="like">'+
             '<span class="star-mark">'+STAR_SVG+'</span><span class="like-count">'+p.likes+'</span>'+
           '</button>'+
-          '<button class="comment-toggle" data-action="toggle-comments">💬 留言 '+p.comments.length+' <span class="chevron '+(openCommentSet.has(p.id)?'open':'')+'">⌄</span></button>'+
+          '<button class="comment-toggle" data-action="toggle-comments">💬 留言 '+p.comments.length+(hasNewComment?' <span class="unread-dot" title="有新留言"></span>':'')+' <span class="chevron '+(openCommentSet.has(p.id)?'open':'')+'">⌄</span></button>'+
         '</div>'+
         '<div class="comments '+(openCommentSet.has(p.id)?'':'collapsed')+'">'+
           p.comments.map(c=>renderComment(c, p.id)).join('')+
@@ -1478,12 +1508,13 @@
       );
     }
     return (
-      '<div class="comment" data-cid="'+c.id+'">'+
+      '<div class="comment'+(c.isNew?' comment-new':'')+'" data-cid="'+c.id+'">'+
         avatarHTML(c.role, c.name)+
         '<div class="comment-bubble">'+
           '<div class="comment-top"><span class="comment-name">'+c.name+'</span>'+
             roleTagHTML(c.role, c.name)+
             '<span class="comment-time">'+timeLabel+'</span>'+editedTag+
+            (c.isNew?' <span class="unread-dot" title="新留言"></span>':'')+
           '</div>'+
           '<div class="comment-text">'+escapeHtml(c.text)+'</div>'+
         '</div>'+
@@ -1819,21 +1850,33 @@
     const btn=e.target.closest('button[data-e]'); if(!btn) return;
     editor.focus(); document.execCommand('insertText',false,btn.dataset.e);
   });
-  fileInput.addEventListener('change',()=>{
+  fileInput.addEventListener('change',async()=>{
     const f=fileInput.files[0]; if(!f) return;
     const ext=(f.name.split('.').pop()||'FILE').toUpperCase().slice(0,4);
     const sizeKB=f.size/1024;
     const sizeLabel=sizeKB>1024?(sizeKB/1024).toFixed(1)+' MB':Math.max(1,Math.round(sizeKB))+' KB';
-    if(f.size > 5*1024*1024){ // 超過 5MB 不允許
-      alert('檔案大小不可超過 5MB，請壓縮後再上傳。');
+    if(f.size > 20*1024*1024){ // 超過 20MB 不允許
+      alert('檔案大小不可超過 20MB，請壓縮後再上傳，或改貼雲端連結。');
       fileInput.value=''; return;
     }
-    const reader = new FileReader();
-    reader.onload = (ev)=>{
-      attachedFile={name:f.name, ext:ext, size:sizeLabel, dataUrl:ev.target.result};
+    attachedFile=null;
+    filePreview.textContent='上傳中… '+f.name;
+    try{
+      const path='attachments/'+Date.now()+'_'+f.name;
+      const uploadTask = storage.ref(path).put(f);
+      const timeout = new Promise((_,reject)=>setTimeout(()=>reject(new Error('upload-timeout')),20000));
+      const snap = await Promise.race([uploadTask, timeout]);
+      const url=await snap.ref.getDownloadURL();
+      attachedFile={name:f.name, ext:ext, size:sizeLabel, url:url};
       filePreview.textContent='已選擇：'+f.name+' （'+sizeLabel+'）';
-    };
-    reader.readAsDataURL(f);
+    }catch(err){
+      console.error('file upload error:',err);
+      filePreview.textContent='';
+      alert(err && err.message==='upload-timeout'
+        ? '檔案上傳逾時，請稍後再試（若持續發生，可能是雲端儲存空間尚未啟用，請聯絡管理員）。'
+        : '檔案上傳失敗，請稍後再試。');
+      fileInput.value='';
+    }
   });
 
   document.getElementById('submitComposer').addEventListener('click',async()=>{
